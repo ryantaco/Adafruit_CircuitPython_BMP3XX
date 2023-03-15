@@ -56,6 +56,9 @@ _REGISTER_ODR = const(0x1D)
 _REGISTER_CONFIG = const(0x1F)
 _REGISTER_CAL_DATA = const(0x31)
 _REGISTER_CMD = const(0x7E)
+_REGISTER_FIFO_CONF_1 = const(0x17)
+_REGISTER_FIFO_CONF_2 = const(0x18)
+_REGISTER_ERR_REG = const(0x02)
 
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # pressure and temperature oversampling settings
 _IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)  # IIR filter coefficients
@@ -64,7 +67,7 @@ _IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)  # IIR filter coefficients
 class BMP3XX:
     """Base class for BMP3XX sensor."""
 
-    def __init__(self) -> None:
+    def __init__(self, forced = False) -> None:
         chip_id = self._read_byte(_REGISTER_CHIPID)
         if chip_id not in (_BMP388_CHIP_ID, _BMP390_CHIP_ID):
             raise RuntimeError(f"Failed to find BMP3XX! Chip ID {hex(chip_id)}")
@@ -73,6 +76,26 @@ class BMP3XX:
         self.sea_level_pressure = 1013.25
         self._wait_time = 0.002  # change this value to have faster reads if needed
         """Sea level pressure in hPa."""
+
+        self.old_time = time.time()
+
+        self.forced = forced
+
+        # # put it in sleep mode before changing mode
+        # self._write_register_byte(_REGISTER_CONTROL, 0x03)
+        # time.sleep(0.2)
+        # self._write_register_byte(_REGISTER_FIFO_CONF_1, 0x00)
+        # self._write_register_byte(_REGISTER_FIFO_CONF_2, 0x00)
+        # time.sleep(0.2)
+
+        # set to normal mode if not forced
+        if not forced:
+            # may want to brind back ODR 
+            # self._write_register_byte(_REGISTER_ODR, 0x01)
+            # time.sleep(0.2)
+            self._write_register_byte(_REGISTER_CONTROL, 0x33)
+            # time.sleep(0.2)
+          
 
     @property
     def pressure(self) -> float:
@@ -141,11 +164,16 @@ class BMP3XX:
         # pylint: disable=invalid-name, too-many-locals
 
         # Perform one measurement in forced mode
-        self._write_register_byte(_REGISTER_CONTROL, 0x13)
+        if self.forced:
+            self._write_register_byte(_REGISTER_CONTROL, 0x13)
 
-        # Wait for *both* conversions to complete
-        while self._read_byte(_REGISTER_STATUS) & 0x60 != 0x60:
-            time.sleep(self._wait_time)
+            # Wait for *both* conversions to complete
+            while self._read_byte(_REGISTER_STATUS) & 0x60 != 0x60:
+                time.sleep(self._wait_time)
+        
+        # print(f'status {self._read_byte(_REGISTER_STATUS)}')
+        # print(f'serror {self._read_byte(_REGISTER_ERR_REG)}')
+
 
         # Get ADC values
         data = self._read_register(_REGISTER_PRESSUREDATA, 6)
